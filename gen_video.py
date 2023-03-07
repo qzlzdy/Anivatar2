@@ -38,12 +38,12 @@ def layout_grid(img, grid_w=None, grid_h=1, float_to_uint8=True, chw_to_hwc=True
     if chw_to_hwc:
         img = img.permute(1, 2, 0)
     if to_numpy:
-        img = img.cpu().numpy()
+        img = img.numpy()
     return img
 
 #----------------------------------------------------------------------------
 
-def gen_interp_video(G, mp4: str, seeds, shuffle_seed=None, w_frames=60*4, kind='cubic', grid_dims=(1,1), num_keyframes=None, wraps=2, psi=1, device=torch.device('cuda'), **video_kwargs):
+def gen_interp_video(G, mp4: str, seeds, shuffle_seed=None, w_frames=60*4, kind='cubic', grid_dims=(1,1), num_keyframes=None, wraps=2, psi=1, **video_kwargs):
     grid_w = grid_dims[0]
     grid_h = grid_dims[1]
 
@@ -60,7 +60,7 @@ def gen_interp_video(G, mp4: str, seeds, shuffle_seed=None, w_frames=60*4, kind=
         rng = np.random.RandomState(seed=shuffle_seed)
         rng.shuffle(all_seeds)
 
-    zs = torch.from_numpy(np.stack([np.random.RandomState(seed).randn(G.z_dim) for seed in all_seeds])).to(device)
+    zs = torch.from_numpy(np.stack([np.random.RandomState(seed).randn(G.z_dim) for seed in all_seeds]))
     ws = G.mapping(z=zs, c=None, truncation_psi=psi)
     _ = G.synthesis(ws[:1]) # warm up
     ws = ws.reshape(grid_h, grid_w, num_keyframes, *ws.shape[1:])
@@ -71,7 +71,7 @@ def gen_interp_video(G, mp4: str, seeds, shuffle_seed=None, w_frames=60*4, kind=
         row = []
         for xi in range(grid_w):
             x = np.arange(-num_keyframes * wraps, num_keyframes * (wraps + 1))
-            y = np.tile(ws[yi][xi].cpu().numpy(), [wraps * 2 + 1, 1, 1])
+            y = np.tile(ws[yi][xi].numpy(), [wraps * 2 + 1, 1, 1])
             interp = scipy.interpolate.interp1d(x, y, kind=kind, axis=0)
             row.append(interp)
         grid.append(row)
@@ -83,7 +83,7 @@ def gen_interp_video(G, mp4: str, seeds, shuffle_seed=None, w_frames=60*4, kind=
         for yi in range(grid_h):
             for xi in range(grid_w):
                 interp = grid[yi][xi]
-                w = torch.from_numpy(interp(frame_idx / w_frames)).to(device)
+                w = torch.from_numpy(interp(frame_idx / w_frames))
                 img = G.synthesis(ws=w.unsqueeze(0), noise_mode='const')[0]
                 imgs.append(img)
         video_out.append_data(layout_grid(torch.stack(imgs), grid_w=grid_w, grid_h=grid_h))
@@ -166,9 +166,8 @@ def generate_images(
     """
 
     print('Loading networks from "%s"...' % network_pkl)
-    device = torch.device('cuda')
     with dnnlib.util.open_url(network_pkl) as f:
-        G = legacy.load_network_pkl(f)['G_ema'].to(device) # type: ignore
+        G = legacy.load_network_pkl(f)['G_ema'] # type: ignore
 
     gen_interp_video(G=G, mp4=output, bitrate='12M', grid_dims=grid, num_keyframes=num_keyframes, w_frames=w_frames, seeds=seeds, shuffle_seed=shuffle_seed, psi=truncation_psi)
 
